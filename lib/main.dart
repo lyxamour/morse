@@ -38,6 +38,8 @@ class _MorseAppState extends State<MorseApp> {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: _themeMode,
+      // 宽屏（Web/桌面）收成手机宽度居中，不铺满浏览器
+      builder: (context, child) => _PhoneWidthFrame(child: child),
       home: MorseHomePage(
         themeMode: _themeMode,
         onThemeModeChanged: (themeMode) {
@@ -84,6 +86,41 @@ class _MorseAppState extends State<MorseApp> {
 
 class CopyOutputIntent extends Intent {
   const CopyOutputIntent();
+}
+
+/// 宽屏下把 app 限制为手机宽度（430）居中，两侧留底色。
+class _PhoneWidthFrame extends StatelessWidget {
+  const _PhoneWidthFrame({required this.child});
+
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = this.child;
+    if (child == null) return const SizedBox.shrink();
+    // 仅 Web 收窄成手机宽度；桌面端铺满窗口
+    if (!kIsWeb || MediaQuery.sizeOf(context).width <= 520) return child;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      color: scheme.brightness == Brightness.dark
+          ? const Color(0xFF141618)
+          : const Color(0xFFececea),
+      child: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 430),
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            border: Border(
+              left: BorderSide(color: scheme.outlineVariant),
+              right: BorderSide(color: scheme.outlineVariant),
+            ),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class MorseHomePage extends StatefulWidget {
