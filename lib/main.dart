@@ -284,14 +284,14 @@ class _MorseHomePageState extends State<MorseHomePage> {
       showDragHandle: true,
       builder: (context) {
         final scheme = Theme.of(context).colorScheme;
-        // 行定义：链接 + 标题 + 环境说明 + 是否推荐；action 为 null 时点击即复制
+        // 行定义：链接 + 标题 + 环境说明 + 是否推荐；share=true 调系统分享
         Widget row(
           String? url,
           String title,
           String env,
-          bool recommended,
-          Future<void> Function()? action,
-        ) => ListTile(
+          bool recommended, {
+          bool share = false,
+        }) => ListTile(
           leading: Icon(
             title.contains('微信') ? Icons.wechat_outlined : Icons.link,
             size: 20,
@@ -338,9 +338,26 @@ class _MorseHomePageState extends State<MorseHomePage> {
           ),
           isThreeLine: url != null,
           onTap: () async {
-            await (action ?? Clipboard.setData(ClipboardData(text: url!)));
+            if (share) {
+              // iPad/macOS 需要 sharePositionOrigin，缺省会静默不弹面板
+              final box = context.findRenderObject() as RenderBox;
+              final result = await SharePlus.instance.share(
+                ShareParams(
+                  text: httpsUrl,
+                  title: 'Morse',
+                  sharePositionOrigin:
+                      box.localToGlobal(Offset.zero) & box.size,
+                ),
+              );
+              if (result.status == ShareResultStatus.unavailable) {
+                _snack('系统分享不可用，请改用链接复制');
+                return;
+              }
+            } else {
+              await Clipboard.setData(ClipboardData(text: url!));
+            }
             if (context.mounted) Navigator.of(context).pop();
-            _snack(action == null ? '链接已复制' : '已调起系统分享');
+            _snack(share ? '已调起系统分享' : '链接已复制');
           },
         );
         // 微信等第三方 IM 拦截自定义 scheme，只有 https 链接在聊天里可点击，
@@ -355,9 +372,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
                   (defaultTargetPlatform == TargetPlatform.android ||
                       defaultTargetPlatform == TargetPlatform.iOS) ||
               kIsWeb,
-          () => SharePlus.instance.share(
-            ShareParams(text: httpsUrl, title: 'Morse'),
-          ),
+          share: true,
         );
         final httpsRow = row(
           httpsUrl,
@@ -366,14 +381,12 @@ class _MorseHomePageState extends State<MorseHomePage> {
           kIsWeb ||
               defaultTargetPlatform == TargetPlatform.windows ||
               defaultTargetPlatform == TargetPlatform.linux,
-          null,
         );
         final morseRow = row(
           morseUrl,
           'morse:// 深链',
           '已安装原生 App（iOS / Android / macOS）直达',
           !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS,
-          null,
         );
         // share_plus 不支持 Windows / Linux 原生
         final showAppsRow =
