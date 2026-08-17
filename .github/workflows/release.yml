@@ -56,6 +56,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      # Gradle 依赖与构建缓存（8m55s → 预期 3-4m）
+      - uses: gradle/actions/setup-gradle@v4
       - run: flutter pub get
       # 单 arm64 + 混淆 + 符号外置，体积最小（现代安卓设备均为 arm64）
       - run: |
@@ -82,6 +84,11 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      # CocoaPods 仓库缓存，Podfile.lock 未变即命中
+      - uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/CocoaPods
+          key: cocoapods-${{ runner.os }}-${{ hashFiles('macos/Podfile.lock') }}
       - run: flutter config --enable-macos-desktop
       - run: flutter build macos --release
       # UDZO 压缩 DMG，比 zip 小；未签名，首次打开需右键 → 打开
