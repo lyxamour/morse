@@ -15,6 +15,8 @@ import 'morse_audio.dart';
 import 'morse_codec.dart';
 
 import 'share_codec.dart';
+import 'share_payload_stub.dart'
+    if (dart.library.ui_web) 'share_payload_web.dart';
 import 'updater.dart';
 
 void main() {
@@ -45,14 +47,26 @@ class _MorseAppState extends State<MorseApp> {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: _themeMode,
-      // 宽屏（Web/桌面）收成手机宽度居中，不铺满浏览器
-      builder: (context, child) => _PhoneWidthFrame(child: child),
       home: MorseHomePage(
         themeMode: _themeMode,
         onThemeModeChanged: (themeMode) {
           setState(() => _themeMode = themeMode);
         },
       ),
+      // 分享链接形如 https://…/c/<payload>（path 路由，配合 web/_redirects）
+      onGenerateRoute: (settings) {
+        final payload = shareRoutePayload(settings.name);
+        if (payload == null) return null;
+        return MaterialPageRoute<void>(
+          builder: (_) => MorseHomePage(
+            themeMode: _themeMode,
+            onThemeModeChanged: (themeMode) {
+              setState(() => _themeMode = themeMode);
+            },
+            initialPayload: payload,
+          ),
+        );
+      },
     );
   }
 
@@ -95,50 +109,19 @@ class CopyOutputIntent extends Intent {
   const CopyOutputIntent();
 }
 
-/// 宽屏下把 app 限制为手机宽度（430）居中，两侧留底色。
-class _PhoneWidthFrame extends StatelessWidget {
-  const _PhoneWidthFrame({required this.child});
-
-  final Widget? child;
-
-  @override
-  Widget build(BuildContext context) {
-    final child = this.child;
-    if (child == null) return const SizedBox.shrink();
-    // 仅 Web 收窄成手机宽度；桌面端铺满窗口
-    if (!kIsWeb || MediaQuery.sizeOf(context).width <= 520) return child;
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      color: scheme.brightness == Brightness.dark
-          ? const Color(0xFF141618)
-          : const Color(0xFFececea),
-      child: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 430),
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            border: Border(
-              left: BorderSide(color: scheme.outlineVariant),
-              right: BorderSide(color: scheme.outlineVariant),
-            ),
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
 class MorseHomePage extends StatefulWidget {
   const MorseHomePage({
     super.key,
     required this.themeMode,
     required this.onThemeModeChanged,
+    this.initialPayload,
   });
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+
+  /// 经 /c/<payload> 路由打开时携带的分享 payload。
+  final String? initialPayload;
 
   @override
   State<MorseHomePage> createState() => _MorseHomePageState();
@@ -163,6 +146,13 @@ int playLimit(PlayCount count) => switch (count) {
   PlayCount.five => 5,
   PlayCount.forever => -1,
 };
+
+/// 网页路由 /c/<payload> → payload；其他路径返回 null。
+String? shareRoutePayload(String? name) {
+  if (name == null) return null;
+  final match = RegExp(r'^/c/([A-Za-z0-9_-]+)$').firstMatch(name);
+  return match?.group(1);
+}
 
 /// morse://convert?c=<payload> 深链 → payload 字符串；其他 URI 返回 null。
 String? morseLinkPayload(Uri uri) {
@@ -197,7 +187,11 @@ class _MorseHomePageState extends State<MorseHomePage> {
   @override
   void initState() {
     super.initState();
-    _restoreFromShareUrl();
+    if (widget.initialPayload != null) {
+      _applyPayload(widget.initialPayload!);
+    } else {
+      _restoreFromShareUrl();
+    }
     _rebuild();
     if (!kIsWeb) _listenDeepLinks();
     // 启动即聚焦输入框
@@ -250,14 +244,15 @@ class _MorseHomePageState extends State<MorseHomePage> {
     _applyPayload(payload);
   }
 
-  /// 打开分享链接（…/#/c/<payload>）时恢复原文与码表。
+  /// 打开分享链接时恢复原文与码表：新式 path 链接 /c/<payload>，
+  /// 旧式 hash 链接 /#/c/<payload>。直接读 Uri.base（启动时的原始
+  /// URL），不依赖 Router——3.47 web 的路由行为不可控，自己读最稳。
   void _restoreFromShareUrl() {
-    final match = RegExp(
-      r'^/c/([A-Za-z0-9_-]+)$',
-    ).firstMatch(Uri.base.fragment);
-    if (match == null) return;
-    _applyPayload(match.group(1)!);
-    _shareMorseUrl = 'morse://convert?c=${match.group(1)!}&p=${_profile.name}';
+    // index.html 在 Flutter 启动前已把 /c/<payload> 存进 JS 全局
+    // （Dart 的 Uri.base 在 path 路由下不可靠）
+    final payload = pageSharePayload();
+    if (payload == null) return;
+    _applyPayload(payload);
   }
 
   /// 外部边界：链接可能损坏，解码失败提示而非崩溃。
@@ -269,6 +264,8 @@ class _MorseHomePageState extends State<MorseHomePage> {
         _inputController.text = decoded.text;
         _result = MorseCodec(profile: decoded.profile).convert(decoded.text);
       });
+      _shareMorseUrl = 'morse://convert?c=$payload&p=${decoded.profile.name}';
+      markRestored(decoded.text);
     } catch (_) {
       _snack('链接损坏，无法打开');
     }
@@ -284,7 +281,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
         : _inputController.text;
     final payload = const ShareCodec().encode(shareText, profile: _profile);
     final base = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
-    final httpsUrl = '$base/#/c/$payload';
+    final httpsUrl = '$base/c/$payload';
     final morseUrl = 'morse://convert?c=$payload&p=${_profile.name}';
     return showModalBottomSheet<void>(
       context: context,
@@ -731,7 +728,11 @@ class _MorseHomePageState extends State<MorseHomePage> {
   /// 微信内置浏览器拦截自定义 scheme（仅白名单可跳），此时按钮无效，
   /// 引导用户右上角「…」→ 在浏览器打开后再试。
   Widget _openInAppBanner(ColorScheme scheme) {
-    if (!kIsWeb || _shareMorseUrl.isEmpty) return const SizedBox.shrink();
+    if (!kIsWeb) return const SizedBox.shrink();
+    // 常显：装了原生 App 的用户任何入口都能一键跳过去
+    final morseUrl = _shareMorseUrl.isNotEmpty
+        ? _shareMorseUrl
+        : 'morse://convert';
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
@@ -739,7 +740,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
         children: [
           OutlinedButton.icon(
             onPressed: () async {
-              final ok = await launchUrl(Uri.parse(_shareMorseUrl));
+              final ok = await launchUrl(Uri.parse(morseUrl));
               if (!ok) _snack('无法唤起 App：请改用系统浏览器打开本页');
             },
             icon: const Icon(Icons.smartphone_outlined, size: 16),

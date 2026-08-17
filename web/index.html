@@ -31,6 +31,14 @@
 
   <title>morse</title>
   <link rel="manifest" href="manifest.json">
+  <script>
+    // 抢在 Flutter 启动前取出分享 payload（path 或 hash 形式），存全局
+    (function () {
+      var m = location.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/) ||
+              location.hash.match(/^#\/c\/([A-Za-z0-9_-]+)$/);
+      window.morseSharePayload = m ? m[1] : '';
+    })();
+  </script>
 </head>
 <body>
   <!--

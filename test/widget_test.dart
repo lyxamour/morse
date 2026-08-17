@@ -58,7 +58,7 @@ void main() {
       find.textContaining(RegExp(r'morse://convert\?c=[A-Za-z0-9_-]+&p=cn')),
       findsOneWidget,
     );
-    expect(find.textContaining('#/c/'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'morse.embla.cf/c/')), findsOneWidget);
 
     await tester.tap(find.text('morse:// 深链'));
     await tester.pumpAndSettle();
