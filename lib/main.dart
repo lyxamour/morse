@@ -13,7 +13,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'morse_audio.dart';
 import 'morse_codec.dart';
+
 import 'share_codec.dart';
+import 'updater.dart';
 
 void main() {
   runApp(const MorseApp());
@@ -202,6 +204,8 @@ class _MorseHomePageState extends State<MorseHomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _inputFocus.requestFocus();
     });
+    // release 静默检查更新（dev/test 不查）
+    if (kReleaseMode && !kIsWeb) _checkUpdate();
     _audioPlayer.onPlayerComplete.listen((_) async {
       if (!mounted || !_playing) return;
       _rounds++;
@@ -434,6 +438,46 @@ class _MorseHomePageState extends State<MorseHomePage> {
     );
   }
 
+  /// 检查更新：读 CF Pages 上的 update.json（国内可达），
+  /// 有新版弹窗，Android 下载 APK 走 gh-proxy 镜像，其他平台开 Release 页。
+  Future<void> _checkUpdate({bool manual = false}) async {
+    try {
+      final info = await fetchLatestUpdate();
+      final current = await PackageInfo.fromPlatform();
+      if (compareVersions(info.version, current.version) <= 0) {
+        if (manual) _snack('已是最新版本');
+        return;
+      }
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('发现新版本 v${info.version}'),
+          content: Text('当前 v${current.version}，建议更新。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('稍后'),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                final url =
+                    !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+                    ? mirrorUrl(info.apk)
+                    : info.page;
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+              },
+              child: const Text('下载更新'),
+            ),
+          ],
+        ),
+      );
+    } on Exception {
+      if (manual) _snack('检查更新失败，请稍后重试');
+    }
+  }
+
   void _rebuild() {
     if (_playing) {
       _playing = false;
@@ -584,6 +628,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
                         playCount: _playCount,
                         onChanged: (count) =>
                             setState(() => _playCount = count),
+                        onCheckUpdate: () => _checkUpdate(manual: true),
                       ),
                     ),
                   );
@@ -884,10 +929,12 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.playCount,
     required this.onChanged,
+    required this.onCheckUpdate,
   });
 
   final PlayCount playCount;
   final ValueChanged<PlayCount> onChanged;
+  final VoidCallback onCheckUpdate;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -951,6 +998,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                 ],
               ),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('检查更新'),
+              subtitle: const Text('检查 morse.embla.cf 上的最新版本'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: widget.onCheckUpdate,
             ),
             if (_version.isNotEmpty)
               Padding(

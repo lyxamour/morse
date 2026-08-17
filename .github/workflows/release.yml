@@ -1,0 +1,148 @@
+# 版本号（pubspec.yaml version）变更时自动 release：
+# 打 tag v<version> → 构建 Android arm64 APK + macOS DMG → 发布 GitHub Release
+# → 构建 Web 并携带 update.json 部署 Cloudflare Pages（app 内检查更新读它）
+name: release
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: 3.47.0
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      release: ${{ steps.v.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 需要完整历史查找已有 tag
+      - id: v
+        run: |
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d'+' -f1)
+          [ -n "$VERSION" ] || { echo "pubspec version 解析失败"; exit 1; }
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "v$VERSION 已存在，跳过 release"
+            RELEASE=false
+          else
+            RELEASE=true
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
+
+  android:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # 单 arm64 + 混淆 + 符号外置，体积最小（现代安卓设备均为 arm64）
+      - run: |
+          flutter build apk --release \
+            --target-platform android-arm64 \
+            --split-per-abi \
+            --obfuscate \
+            --split-debug-info=build/symbols
+      - run: mv build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "morse-${{ needs.gate.outputs.version }}-arm64.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: morse-*-arm64.apk
+
+  macos:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter config --enable-macos-desktop
+      - run: flutter build macos --release
+      # UDZO 压缩 DMG，比 zip 小；未签名，首次打开需右键 → 打开
+      - name: 打包 DMG
+        run: |
+          hdiutil create -volname "Morse" \
+            -srcfolder build/macos/Build/Products/Release/morse.app \
+            -ov -format UDZO "morse-${{ needs.gate.outputs.version }}-macos.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: morse-*-macos.dmg
+
+  github-release:
+    needs: [gate, android, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.gate.outputs.version }}
+          name: v${{ needs.gate.outputs.version }}
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            - **Android**：下载 `morse-*-arm64.apk`（arm64 设备）直接安装
+            - **macOS**：下载 `morse-*-macos.dmg`，未做开发者签名——首次打开：右键 App →「打开」，或系统设置 → 隐私与安全性 →「仍要打开」
+            - **Web**：https://morse.embla.cf
+          files: |
+            morse-*.apk
+            morse-*.dmg
+
+  web-cf:
+    needs: [gate, github-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build web --release
+      - name: 生成 update.json（app 内检查更新读这个，CF 国内可达）
+        run: |
+          V=${{ needs.gate.outputs.version }}
+          cat > build/web/update.json <<JSON
+          {"version":"$V","apk":"https://github.com/lyxamour/morse/releases/download/v$V/morse-$V-arm64.apk","page":"https://github.com/lyxamour/morse/releases/tag/v$V"}
+          JSON
+      - name: 部署 Cloudflare Pages（未配置密钥则跳过）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::warning::未设置 CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID，跳过部署。配置后重跑本 workflow 即可。"
+            exit 0
+          fi
+          npx --yes wrangler@latest pages deploy build/web \
+            --project-name=morse --branch=master --commit-dirty=true

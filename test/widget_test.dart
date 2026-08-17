@@ -116,5 +116,6 @@ void main() {
     expect(groupOf().groupValue, PlayCount.forever);
     await tester.pump();
     expect(find.text('版本 0.0.1'), findsOneWidget);
+    expect(find.text('检查更新'), findsOneWidget);
   });
 }
