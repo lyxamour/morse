@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=morse
+Comment=Morse 转换器
+Exec=morse %u
+Icon=morse
+Terminal=false
+Categories=Utility;
+MimeType=x-scheme-handler/morse;
+StartupWMClass=morse

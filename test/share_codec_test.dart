@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morse/morse_codec.dart';
+import 'package:morse/main.dart';
 import 'package:morse/share_codec.dart';
 
 void main() {
@@ -60,6 +61,19 @@ void main() {
     const text = '我想你 hello 123 😀 呜呜呜';
     final payload = codec.encode(text);
     expect(codec.decode(payload).text, text);
+  });
+
+  test('morse:// 深链解析出 payload，其他 URI 不认', () {
+    const payload = 'AYKagA';
+    expect(
+      morseLinkPayload(Uri.parse('morse://convert?c=$payload&p=cn')),
+      payload,
+    );
+    expect(morseLinkPayload(Uri.parse('morse://play?c=$payload')), isNull);
+    expect(
+      morseLinkPayload(Uri.parse('https://morse.embla.cf/#/c/$payload')),
+      isNull,
+    );
   });
 
   test('非法 payload 抛 FormatException', () {

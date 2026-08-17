@@ -1,5 +1,6 @@
 import 'dart:io' show Directory;
 
+import 'package:app_links/app_links.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -158,6 +159,12 @@ int playLimit(PlayCount count) => switch (count) {
   PlayCount.forever => -1,
 };
 
+/// morse://convert?c=<payload> 深链 → payload 字符串；其他 URI 返回 null。
+String? morseLinkPayload(Uri uri) {
+  if (uri.scheme != 'morse' || uri.host != 'convert') return null;
+  return uri.queryParameters['c'];
+}
+
 class _MorseHomePageState extends State<MorseHomePage> {
   final _inputController = TextEditingController();
   final _inputFocus = FocusNode();
@@ -185,6 +192,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
     super.initState();
     _restoreFromShareUrl();
     _rebuild();
+    if (!kIsWeb) _listenDeepLinks();
     // 启动即聚焦输入框
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _inputFocus.requestFocus();
@@ -210,18 +218,49 @@ class _MorseHomePageState extends State<MorseHomePage> {
     super.dispose();
   }
 
+  /// morse:// 深链：冷启动（getInitialLink）与运行中（uriLinkStream）均恢复。
+  void _listenDeepLinks() {
+    final appLinks = AppLinks();
+    appLinks.uriLinkStream.listen(
+      (uri) => _applyDeepLink(uri),
+      onError: (Object _) {}, // 平台不支持时静默
+    );
+    appLinks.getInitialLink().then(
+      (uri) {
+        if (uri != null) _applyDeepLink(uri);
+      },
+      // 冷启动无链接时部分平台抛错，忽略
+      onError: (Object _) {},
+    );
+  }
+
+  void _applyDeepLink(Uri uri) {
+    final payload = morseLinkPayload(uri);
+    if (payload == null) return;
+    if (!mounted) return;
+    _applyPayload(payload);
+  }
+
   /// 打开分享链接（…/#/c/<payload>）时恢复原文与码表。
   void _restoreFromShareUrl() {
     final match = RegExp(
       r'^/c/([A-Za-z0-9_-]+)$',
     ).firstMatch(Uri.base.fragment);
     if (match == null) return;
+    _applyPayload(match.group(1)!);
+  }
+
+  /// 外部边界：链接可能损坏，解码失败提示而非崩溃。
+  void _applyPayload(String payload) {
     try {
-      final payload = const ShareCodec().decode(match.group(1)!);
-      _profile = payload.profile;
-      _inputController.text = payload.text;
-    } on FormatException {
-      // 链接损坏：忽略，按空输入启动
+      final decoded = const ShareCodec().decode(payload);
+      setState(() {
+        _profile = decoded.profile;
+        _inputController.text = decoded.text;
+        _result = MorseCodec(profile: decoded.profile).convert(decoded.text);
+      });
+    } catch (_) {
+      _snack('链接损坏，无法打开');
     }
   }
 
