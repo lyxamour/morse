@@ -11,10 +11,7 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        // dl.google.com 直连被掐，阿里云镜像前置
-        maven("https://maven.aliyun.com/repository/google")
-        maven("https://maven.aliyun.com/repository/central")
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
+        // 官方源：CI 稳定；本机国内网络经 ~/.gradle 代理访问
         google()
         mavenCentral()
         gradlePluginPortal()
