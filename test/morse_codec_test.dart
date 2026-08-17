@@ -83,12 +83,32 @@ void main() {
     }
   });
 
-  test('未知字符保留逐字符错误', () {
+  test('表外字符（emoji）走码点转义并往返无损', () {
     final result = codec.encodeText('中😀');
 
-    expect(result.hasError, isTrue);
-    expect(result.units.last.status, MorseStatus.error);
+    expect(result.hasError, isFalse);
+    expect(result.units.last.status, MorseStatus.ok);
     expect(result.units.last.index, 1);
+    // ((128512)) 的 Morse 化
+    expect(
+      result.output.endsWith(
+        '-.--. -.--. .---- ..--- ---.. ..... .---- ..--- -.--.- -.--.-',
+      ),
+      isTrue,
+    );
+
+    final decoded = codec.decodeMorse(result.output);
+    expect(decoded.output, '中😀');
+    expect(decoded.hasError, isFalse);
+  });
+
+  test('连续 emoji 与 emoji+中文混排均往返无损', () {
+    for (final input in ['😀😀', '你好😀WORLD', '❤️🎉']) {
+      final roundTrip = codec.decodeMorse(codec.encodeText(input).output);
+      // emoji 间按词间隔（/）渲染为空格
+      expect(roundTrip.output.replaceAll(' ', ''), input);
+      expect(roundTrip.hasError, isFalse);
+    }
   });
 
   test('兼容 Unicode 点划字符', () {

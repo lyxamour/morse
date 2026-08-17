@@ -111,6 +111,9 @@ class MorseCodec {
     for (final entry in _latinMorse.entries) entry.value: entry.key,
   };
 
+  /// 码点转义：((十进制))，1-7 位覆盖全部 Unicode（上限 1114111）。
+  static final RegExp _codepointEscape = RegExp(r'\(\((\d{1,7})\)\)');
+
   static const Map<String, String> _traditionalToSimplified = chineseT2s;
 
   Map<String, String> get _telegraphCodes => switch (profile) {
@@ -137,7 +140,6 @@ class MorseCodec {
     final normalizedInput = _normalizeInput(input);
     final units = <MorseUnit>[];
     final parts = <String>[];
-    var hasError = false;
     var index = 0;
 
     for (final rune in normalizedInput.runes) {
@@ -196,15 +198,17 @@ class MorseCodec {
         continue;
       }
 
-      hasError = true;
+      // 无标准映射（emoji 等）：双括号码点转义，((码点十进制))
+      final morse = '(($rune))'.split('').map((c) => _latinMorse[c]!).join(' ');
+      parts.add(morse);
       units.add(
         MorseUnit(
           source: source,
           index: index,
           normalized: source,
-          status: MorseStatus.error,
-          error: '没有固定标准电报码或 Morse 映射',
-          debug: const {'kind': 'unknown'},
+          status: MorseStatus.ok,
+          morse: morse,
+          debug: {'kind': 'unicode-escape', 'codepoint': rune},
         ),
       );
       index++;
@@ -216,7 +220,7 @@ class MorseCodec {
       kind: MorseInputKind.text,
       output: parts.join(' '),
       units: units,
-      hasError: hasError,
+      hasError: false,
     );
   }
 
@@ -280,8 +284,15 @@ class MorseCodec {
       );
     }
 
-    // 数字段先反查电报码；电报标准字间用空格，逗号（--..--）渲染为空格
-    final joined = output.join().replaceAllMapped(
+    // 先反转义码点转义（防其数字被误当电报码），再数字段反查电报码；
+    // 电报标准字间用空格，逗号（--..--）渲染为空格
+    final unescaped = output.join().replaceAllMapped(_codepointEscape, (match) {
+      final cp = int.parse(match.group(1)!);
+      return cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)
+          ? String.fromCharCode(cp)
+          : match.group(0)!;
+    });
+    final joined = unescaped.replaceAllMapped(
       RegExp(r'\d+'),
       (match) => _decodeTelegraphDigits(match.group(0)!) ?? match.group(0)!,
     );
@@ -313,6 +324,16 @@ class MorseCodec {
         : _traditionalToSimplified[char];
     if (converted == null) return null;
     return _telegraphCodes[converted];
+  }
+
+  /// 分享打包用的公开查询：字 → 电报码（含简繁互转）。
+  String? telegraphCodeOf(String char) => _lookupTelegraph(char);
+
+  /// 电报码 → 显示字（台湾表反查为繁体，转回简体显示）。
+  String? charOfTelegraph(String code) {
+    final char = _telegraphChars[code];
+    if (char == null) return null;
+    return _traditionalToSimplified[char] ?? char;
   }
 
   MorseResult _ambiguous(String input) {

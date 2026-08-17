@@ -9,6 +9,7 @@ import 'package:torch_light/torch_light.dart';
 
 import 'morse_audio.dart';
 import 'morse_codec.dart';
+import 'share_codec.dart';
 
 void main() {
   runApp(const MorseApp());
@@ -182,6 +183,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
   @override
   void initState() {
     super.initState();
+    _restoreFromShareUrl();
     _rebuild();
     // 启动即聚焦输入框
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -206,6 +208,32 @@ class _MorseHomePageState extends State<MorseHomePage> {
     _inputController.dispose();
     _inputFocus.dispose();
     super.dispose();
+  }
+
+  /// 打开分享链接（…/#/c/<payload>）时恢复原文与码表。
+  void _restoreFromShareUrl() {
+    final match = RegExp(
+      r'^/c/([A-Za-z0-9_-]+)$',
+    ).firstMatch(Uri.base.fragment);
+    if (match == null) return;
+    try {
+      final payload = const ShareCodec().decode(match.group(1)!);
+      _profile = payload.profile;
+      _inputController.text = payload.text;
+    } on FormatException {
+      // 链接损坏：忽略，按空输入启动
+    }
+  }
+
+  Future<void> _shareUrl() async {
+    final origin = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
+    final payload = const ShareCodec().encode(
+      _inputController.text,
+      profile: _profile,
+    );
+    await Clipboard.setData(ClipboardData(text: '$origin/#/c/$payload'));
+    if (!mounted) return;
+    _snack('分享链接已复制');
   }
 
   void _rebuild() {
@@ -344,6 +372,11 @@ class _MorseHomePageState extends State<MorseHomePage> {
               ),
             ),
             actions: [
+              IconButton(
+                tooltip: '复制分享链接',
+                onPressed: _inputController.text.isEmpty ? null : _shareUrl,
+                icon: const Icon(Icons.share_outlined, size: 20),
+              ),
               IconButton(
                 tooltip: '设置',
                 onPressed: () {
