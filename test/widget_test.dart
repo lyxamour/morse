@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morse/main.dart';
+import 'package:morse/share_codec.dart';
 
 void main() {
   testWidgets('空输入启动并允许切换电报码表和黑白模式', (tester) async {
@@ -61,6 +62,37 @@ void main() {
     await tester.tap(find.text('morse:// 深链'));
     await tester.pumpAndSettle();
     expect(find.text('链接已复制'), findsOneWidget);
+  });
+
+  testWidgets('分享内容是当前输出：发文本收到 Morse，发 Morse 收到文本', (tester) async {
+    String payloadOf() {
+      final url = tester
+          .widget<SelectableText>(find.byType(SelectableText).first)
+          .data!;
+      return url.split('c=')[1].split('&').first;
+    }
+
+    await tester.pumpWidget(const MorseApp());
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => null,
+    );
+
+    // 文本输入：分享的是 Morse 输出
+    await tester.enterText(find.byType(TextField), 'sos');
+    await tester.pump();
+    await tester.tap(find.byTooltip('复制分享链接'));
+    await tester.pumpAndSettle();
+    expect(const ShareCodec().decode(payloadOf()).text, '... --- ...');
+    await tester.tap(find.text('https 网页链接'));
+    await tester.pumpAndSettle();
+
+    // Morse 输入：分享的是解码文本
+    await tester.enterText(find.byType(TextField), '... --- ...');
+    await tester.pump();
+    await tester.tap(find.byTooltip('复制分享链接'));
+    await tester.pumpAndSettle();
+    expect(const ShareCodec().decode(payloadOf()).text, 'SOS');
   });
 
   testWidgets('设置页可切换播放次数且默认 1 次', (tester) async {

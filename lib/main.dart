@@ -272,10 +272,12 @@ class _MorseHomePageState extends State<MorseHomePage> {
   /// 分享：弹出链接选择。手机端系统分享面板（微信等）优先，Web 端 https 优先，
   /// 桌面端 morse:// 直达优先；均展示完整链接供复制。
   Future<void> _shareUrl() {
-    final payload = const ShareCodec().encode(
-      _inputController.text,
-      profile: _profile,
-    );
+    // 分享的内容是当前的输出：接收方打开后，输出变成其输入（互为镜像——
+    // 发文本的对方收到 Morse，发 Morse 的对方收到文本）
+    final shareText = _result.output.isNotEmpty
+        ? _result.output
+        : _inputController.text;
+    final payload = const ShareCodec().encode(shareText, profile: _profile);
     final base = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
     final httpsUrl = '$base/#/c/$payload';
     final morseUrl = 'morse://convert?c=$payload&p=${_profile.name}';
@@ -394,34 +396,37 @@ class _MorseHomePageState extends State<MorseHomePage> {
                 defaultTargetPlatform == TargetPlatform.linux) ||
             kIsWeb;
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.fromLTRB(32, 0, 32, 4),
-                child: Text(
-                  '分享',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          // 真机 sheet 高度受限，行数多时需滚动，否则深链/https 行被裁掉
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(32, 0, 32, 4),
+                  child: Text(
+                    '分享',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
                 ),
-              ),
-              // 手机端系统分享优先，桌面端深链优先，Web 端 https 优先
-              if (defaultTargetPlatform == TargetPlatform.android ||
-                  defaultTargetPlatform == TargetPlatform.iOS) ...[
-                if (showAppsRow) appsRow,
-                morseRow,
-                httpsRow,
-              ] else if (kIsWeb) ...[
-                httpsRow,
-                if (showAppsRow) appsRow,
-                morseRow,
-              ] else ...[
-                morseRow,
-                if (showAppsRow) appsRow,
-                httpsRow,
+                // 手机端系统分享优先，桌面端深链优先，Web 端 https 优先
+                if (defaultTargetPlatform == TargetPlatform.android ||
+                    defaultTargetPlatform == TargetPlatform.iOS) ...[
+                  if (showAppsRow) appsRow,
+                  morseRow,
+                  httpsRow,
+                ] else if (kIsWeb) ...[
+                  httpsRow,
+                  if (showAppsRow) appsRow,
+                  morseRow,
+                ] else ...[
+                  morseRow,
+                  if (showAppsRow) appsRow,
+                  httpsRow,
+                ],
+                const SizedBox(height: 12),
               ],
-              const SizedBox(height: 12),
-            ],
+            ),
           ),
         );
       },
