@@ -225,15 +225,107 @@ class _MorseHomePageState extends State<MorseHomePage> {
     }
   }
 
-  Future<void> _shareUrl() async {
-    final origin = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
+  /// 分享：弹出链接选择。原生端 morse:// 直达优先，Web 端 https 优先，
+  /// 另一项标注为兼容模式，均展示完整链接供复制。
+  Future<void> _shareUrl() {
     final payload = const ShareCodec().encode(
       _inputController.text,
       profile: _profile,
     );
-    await Clipboard.setData(ClipboardData(text: '$origin/#/c/$payload'));
-    if (!mounted) return;
-    _snack('分享链接已复制');
+    final base = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
+    final httpsUrl = '$base/#/c/$payload';
+    final morseUrl = 'morse://convert?c=$payload&p=${_profile.name}';
+    return showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        final scheme = Theme.of(context).colorScheme;
+        // 行定义：链接 + 标题 + 环境说明 + 是否推荐
+        Widget row(String url, String title, String env, bool recommended) =>
+            ListTile(
+              leading: Icon(
+                recommended ? Icons.link : Icons.open_in_new_outlined,
+                size: 20,
+                color: recommended ? scheme.secondary : null,
+              ),
+              title: Row(
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: recommended ? scheme.secondary : scheme.outline,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      recommended ? '推荐' : '兼容模式',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: recommended ? scheme.secondary : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(env, style: const TextStyle(fontSize: 11.5)),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    url,
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+              isThreeLine: true,
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (context.mounted) Navigator.of(context).pop();
+                _snack('链接已复制');
+              },
+            );
+        final httpsRow = row(
+          httpsUrl,
+          'https 网页链接',
+          '全平台通用 · 浏览器直接打开，未装 App 也能看',
+          kIsWeb,
+        );
+        final morseRow = row(
+          morseUrl,
+          'morse:// 深链',
+          '已安装原生 App（iOS / Android / macOS）直达',
+          !kIsWeb,
+        );
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(32, 0, 32, 4),
+                child: Text(
+                  '分享',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+              if (!kIsWeb) ...[morseRow, httpsRow] else ...[httpsRow, morseRow],
+              const SizedBox(height: 12),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _rebuild() {
