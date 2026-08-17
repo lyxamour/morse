@@ -1,4 +1,6 @@
-.PHONY: help run build-macos build-android build-web lint test clean
+.PHONY: help run build-macos build-android build-web release-web lint test clean
+
+CF_PAGES_PROJECT ?= morse
 
 help:
 	@printf '%s\n' \
@@ -7,6 +9,7 @@ help:
 		'build-macos   构建 macOS DMG' \
 		'build-android 构建 Android APK' \
 		'build-web     构建 Web 静态站点' \
+		'release-web   构建并部署到 Cloudflare Pages（首次需 npx wrangler login）' \
 		'lint          运行 dart format 检查和 flutter analyze' \
 		'test          运行 Flutter 测试' \
 		'clean         清理项目产物、Gradle 项目缓存与全局依赖缓存'
@@ -23,6 +26,9 @@ build-android:
 
 build-web:
 	flutter build web
+
+release-web: build-web
+	npx --yes wrangler@latest pages deploy build/web --project-name=$(CF_PAGES_PROJECT) --commit-dirty=true
 
 lint:
 	dart format --set-exit-if-changed lib test
