@@ -5,6 +5,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:torch_light/torch_light.dart';
@@ -894,6 +895,15 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late var _playCount = widget.playCount;
+  var _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    PackageInfo.fromPlatform().then((info) {
+      if (mounted) setState(() => _version = info.version);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -942,6 +952,18 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            if (_version.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 32),
+                child: Text(
+                  '版本 $_version',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    letterSpacing: 2.5,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

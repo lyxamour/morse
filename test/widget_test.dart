@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:morse/main.dart';
 import 'package:morse/share_codec.dart';
@@ -95,7 +96,14 @@ void main() {
     expect(const ShareCodec().decode(payloadOf()).text, 'SOS');
   });
 
-  testWidgets('设置页可切换播放次数且默认 1 次', (tester) async {
+  testWidgets('设置页可切换播放次数且默认 1 次，显示版本号', (tester) async {
+    PackageInfo.setMockInitialValues(
+      appName: 'morse',
+      packageName: 'com.example.morse',
+      version: '0.0.1',
+      buildNumber: '1',
+      buildSignature: '',
+    );
     await tester.pumpWidget(const MorseApp());
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
@@ -106,5 +114,7 @@ void main() {
     await tester.tap(find.text('一直连续'));
     await tester.pumpAndSettle();
     expect(groupOf().groupValue, PlayCount.forever);
+    await tester.pump();
+    expect(find.text('版本 0.0.1'), findsOneWidget);
   });
 }
