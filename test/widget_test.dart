@@ -34,7 +34,7 @@ void main() {
     expect(find.textContaining('2.4 s'), findsOneWidget);
   });
 
-  testWidgets('分享弹出双链接选择，原生端 morse:// 优先并标注推荐/兼容', (tester) async {
+  testWidgets('分享面板：手机端系统分享优先并标注推荐/兼容', (tester) async {
     await tester.pumpWidget(const MorseApp());
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -45,13 +45,13 @@ void main() {
     await tester.tap(find.byTooltip('复制分享链接'));
     await tester.pumpAndSettle();
 
-    // 测试环境非 Web：morse:// 行排在 https 行前面
+    // 测试环境为 Android：微信/系统分享行排最前
+    final appsTop = tester.getTopLeft(find.text('微信 / 系统分享')).dy;
     final morseTop = tester.getTopLeft(find.text('morse:// 深链')).dy;
     final httpsTop = tester.getTopLeft(find.text('https 网页链接')).dy;
-    expect(morseTop < httpsTop, isTrue);
+    expect(appsTop < morseTop && morseTop < httpsTop, isTrue);
     expect(find.text('推荐'), findsOneWidget);
-    expect(find.text('兼容模式'), findsOneWidget);
-    // 链接原文展示在面板里
+    expect(find.text('兼容模式'), findsNWidgets(2));
     expect(
       find.textContaining(RegExp(r'morse://convert\?c=[A-Za-z0-9_-]+&p=cn')),
       findsOneWidget,

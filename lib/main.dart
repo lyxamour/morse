@@ -6,7 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:torch_light/torch_light.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'morse_audio.dart';
 import 'morse_codec.dart';
@@ -176,6 +178,8 @@ class _MorseHomePageState extends State<MorseHomePage> {
   var _rounds = 0;
   Uint8List? _wav;
   var _profile = TelegraphProfile.cn;
+  // Web 端通过分享链接打开时，保存对应 morse:// 深链供「在 App 中打开」
+  var _shareMorseUrl = '';
   var _result = const MorseResult(
     input: '',
     normalizedInput: '',
@@ -248,6 +252,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
     ).firstMatch(Uri.base.fragment);
     if (match == null) return;
     _applyPayload(match.group(1)!);
+    _shareMorseUrl = 'morse://convert?c=${match.group(1)!}&p=${_profile.name}';
   }
 
   /// 外部边界：链接可能损坏，解码失败提示而非崩溃。
@@ -264,8 +269,8 @@ class _MorseHomePageState extends State<MorseHomePage> {
     }
   }
 
-  /// 分享：弹出链接选择。原生端 morse:// 直达优先，Web 端 https 优先，
-  /// 另一项标注为兼容模式，均展示完整链接供复制。
+  /// 分享：弹出链接选择。手机端系统分享面板（微信等）优先，Web 端 https 优先，
+  /// 桌面端 morse:// 直达优先；均展示完整链接供复制。
   Future<void> _shareUrl() {
     final payload = const ShareCodec().encode(
       _inputController.text,
@@ -279,73 +284,102 @@ class _MorseHomePageState extends State<MorseHomePage> {
       showDragHandle: true,
       builder: (context) {
         final scheme = Theme.of(context).colorScheme;
-        // 行定义：链接 + 标题 + 环境说明 + 是否推荐
-        Widget row(String url, String title, String env, bool recommended) =>
-            ListTile(
-              leading: Icon(
-                recommended ? Icons.link : Icons.open_in_new_outlined,
-                size: 20,
-                color: recommended ? scheme.secondary : null,
-              ),
-              title: Row(
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: recommended ? scheme.secondary : scheme.outline,
-                      ),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      recommended ? '推荐' : '兼容模式',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: recommended ? scheme.secondary : null,
-                      ),
-                    ),
+        // 行定义：链接 + 标题 + 环境说明 + 是否推荐；action 为 null 时点击即复制
+        Widget row(
+          String? url,
+          String title,
+          String env,
+          bool recommended,
+          Future<void> Function()? action,
+        ) => ListTile(
+          leading: Icon(
+            title.contains('微信') ? Icons.wechat_outlined : Icons.link,
+            size: 20,
+            color: recommended ? scheme.secondary : null,
+          ),
+          title: Row(
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14)),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: recommended ? scheme.secondary : scheme.outline,
                   ),
-                ],
-              ),
-              subtitle: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(env, style: const TextStyle(fontSize: 11.5)),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    url,
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                      color: scheme.onSurfaceVariant,
-                    ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  recommended ? '推荐' : '兼容模式',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: recommended ? scheme.secondary : null,
                   ),
-                ],
+                ),
               ),
-              isThreeLine: true,
-              onTap: () async {
-                await Clipboard.setData(ClipboardData(text: url));
-                if (context.mounted) Navigator.of(context).pop();
-                _snack('链接已复制');
-              },
-            );
+            ],
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(env, style: const TextStyle(fontSize: 11.5)),
+              if (url != null) ...[
+                const SizedBox(height: 4),
+                SelectableText(
+                  url,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          isThreeLine: url != null,
+          onTap: () async {
+            await (action ?? Clipboard.setData(ClipboardData(text: url!)));
+            if (context.mounted) Navigator.of(context).pop();
+            _snack(action == null ? '链接已复制' : '已调起系统分享');
+          },
+        );
+        // 微信等第三方 IM 拦截自定义 scheme，只有 https 链接在聊天里可点击，
+        // 故系统分享一律发 https
+        final appsRow = row(
+          null,
+          '微信 / 系统分享',
+          kIsWeb
+              ? '手机浏览器调起系统分享面板 · 可直接发微信'
+              : '打开系统分享面板选微信 · 聊天里发的是可点击的 https 链接',
+          !kIsWeb &&
+                  (defaultTargetPlatform == TargetPlatform.android ||
+                      defaultTargetPlatform == TargetPlatform.iOS) ||
+              kIsWeb,
+          () => SharePlus.instance.share(
+            ShareParams(text: httpsUrl, title: 'Morse'),
+          ),
+        );
         final httpsRow = row(
           httpsUrl,
           'https 网页链接',
           '全平台通用 · 浏览器直接打开，未装 App 也能看',
-          kIsWeb,
+          kIsWeb ||
+              defaultTargetPlatform == TargetPlatform.windows ||
+              defaultTargetPlatform == TargetPlatform.linux,
+          null,
         );
         final morseRow = row(
           morseUrl,
           'morse:// 深链',
           '已安装原生 App（iOS / Android / macOS）直达',
-          !kIsWeb,
+          !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS,
+          null,
         );
+        // share_plus 不支持 Windows / Linux 原生
+        final showAppsRow =
+            !(defaultTargetPlatform == TargetPlatform.windows ||
+                defaultTargetPlatform == TargetPlatform.linux) ||
+            kIsWeb;
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -358,7 +392,21 @@ class _MorseHomePageState extends State<MorseHomePage> {
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                 ),
               ),
-              if (!kIsWeb) ...[morseRow, httpsRow] else ...[httpsRow, morseRow],
+              // 手机端系统分享优先，桌面端深链优先，Web 端 https 优先
+              if (defaultTargetPlatform == TargetPlatform.android ||
+                  defaultTargetPlatform == TargetPlatform.iOS) ...[
+                if (showAppsRow) appsRow,
+                morseRow,
+                httpsRow,
+              ] else if (kIsWeb) ...[
+                httpsRow,
+                if (showAppsRow) appsRow,
+                morseRow,
+              ] else ...[
+                morseRow,
+                if (showAppsRow) appsRow,
+                httpsRow,
+              ],
               const SizedBox(height: 12),
             ],
           ),
@@ -547,6 +595,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _openInAppBanner(scheme),
                   _profileSwitch(scheme),
                   const SizedBox(height: 44),
                   _label('输入 · ${_result.kind.name}'),
@@ -626,6 +675,34 @@ class _MorseHomePageState extends State<MorseHomePage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Web 端经分享链接打开时：尝试 morse:// 唤起本机 App。
+  /// 微信内置浏览器拦截自定义 scheme（仅白名单可跳），此时按钮无效，
+  /// 引导用户右上角「…」→ 在浏览器打开后再试。
+  Widget _openInAppBanner(ColorScheme scheme) {
+    if (!kIsWeb || _shareMorseUrl.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () async {
+              final ok = await launchUrl(Uri.parse(_shareMorseUrl));
+              if (!ok) _snack('无法唤起 App：请改用系统浏览器打开本页');
+            },
+            icon: const Icon(Icons.smartphone_outlined, size: 16),
+            label: const Text('在 App 中打开'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '微信内打开无效？点右上角「…」→ 在浏览器打开，再点此按钮',
+            style: TextStyle(fontSize: 11.5, color: scheme.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
