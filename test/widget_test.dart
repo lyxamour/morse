@@ -51,7 +51,7 @@ void main() {
     final appsTop = tester.getTopLeft(find.text('微信 / 系统分享')).dy;
     final morseTop = tester.getTopLeft(find.text('morse:// 深链')).dy;
     final httpsTop = tester.getTopLeft(find.text('https 网页链接')).dy;
-    expect(appsTop < morseTop && morseTop < httpsTop, isTrue);
+    expect(httpsTop < appsTop && appsTop < morseTop, isTrue);
     expect(find.text('推荐'), findsOneWidget);
     expect(find.text('兼容模式'), findsNWidgets(2));
     expect(
@@ -70,7 +70,8 @@ void main() {
       final url = tester
           .widget<SelectableText>(find.byType(SelectableText).first)
           .data!;
-      return url.split('c=')[1].split('&').first;
+      // morse:// 链接是 c=<payload>，https 链接是 #/c/<payload>
+      return RegExp(r'c[=/]([A-Za-z0-9_-]+)').firstMatch(url)![1]!;
     }
 
     await tester.pumpWidget(const MorseApp());

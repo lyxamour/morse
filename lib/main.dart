@@ -375,25 +375,20 @@ class _MorseHomePageState extends State<MorseHomePage> {
           kIsWeb
               ? '手机浏览器调起系统分享面板 · 可直接发微信'
               : '打开系统分享面板选微信 · 聊天里发的是可点击的 https 链接',
-          !kIsWeb &&
-                  (defaultTargetPlatform == TargetPlatform.android ||
-                      defaultTargetPlatform == TargetPlatform.iOS) ||
-              kIsWeb,
+          false,
           share: true,
         );
         final httpsRow = row(
           httpsUrl,
           'https 网页链接',
           '全平台通用 · 浏览器直接打开，未装 App 也能看',
-          kIsWeb ||
-              defaultTargetPlatform == TargetPlatform.windows ||
-              defaultTargetPlatform == TargetPlatform.linux,
+          true,
         );
         final morseRow = row(
           morseUrl,
           'morse:// 深链',
           '已安装原生 App（iOS / Android / macOS）直达',
-          !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS,
+          false,
         );
         // share_plus 不支持 Windows / Linux 原生
         final showAppsRow =
@@ -414,21 +409,10 @@ class _MorseHomePageState extends State<MorseHomePage> {
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
-                // 手机端系统分享优先，桌面端深链优先，Web 端 https 优先
-                if (defaultTargetPlatform == TargetPlatform.android ||
-                    defaultTargetPlatform == TargetPlatform.iOS) ...[
-                  if (showAppsRow) appsRow,
-                  morseRow,
-                  httpsRow,
-                ] else if (kIsWeb) ...[
-                  httpsRow,
-                  if (showAppsRow) appsRow,
-                  morseRow,
-                ] else ...[
-                  morseRow,
-                  if (showAppsRow) appsRow,
-                  httpsRow,
-                ],
+                // https 链接默认第一（全平台可打开），系统分享次之，深链兜底
+                httpsRow,
+                if (showAppsRow) appsRow,
+                morseRow,
                 const SizedBox(height: 12),
               ],
             ),
