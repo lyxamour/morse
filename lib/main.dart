@@ -274,7 +274,9 @@ class _MorseHomePageState extends State<MorseHomePage> {
       _shareMorseUrl = 'morse://convert?c=$payload&p=${decoded.profile.name}';
       markRestored(decoded.text);
     } catch (_) {
-      _snack('链接损坏，无法打开');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _snack('链接损坏，无法打开');
+      });
     }
   }
 

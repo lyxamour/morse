@@ -145,13 +145,14 @@ class MorseCodec {
     for (final rune in normalizedInput.runes) {
       final source = String.fromCharCode(rune);
       if (source.trim().isEmpty) {
+        parts.add('/');
         units.add(
           MorseUnit(
             source: source,
             index: index,
             normalized: source,
             status: MorseStatus.ok,
-            morse: '',
+            morse: '/',
             debug: const {'kind': 'space'},
           ),
         );
@@ -236,6 +237,21 @@ class MorseCodec {
 
     for (var index = 0; index < tokens.length; index++) {
       final token = tokens[index];
+      if (token == '/') {
+        output.add(' ');
+        units.add(
+          MorseUnit(
+            source: token,
+            index: index,
+            normalized: token,
+            status: MorseStatus.ok,
+            morse: token,
+            debug: const {'kind': 'word-gap'},
+          ),
+        );
+        continue;
+      }
+
       final char = _morseLatin[token];
       if (char != null) {
         output.add(char);
@@ -389,8 +405,7 @@ class MorseCodec {
         .replaceAll('•', '.')
         .replaceAll('—', '-')
         .replaceAll('–', '-')
-        .replaceAll('_', '-')
-        .replaceAll('/', ' ');
+        .replaceAll('_', '-');
   }
 
   String? _decodeTelegraphDigits(String value) {

@@ -5,11 +5,19 @@ import 'package:morse/morse_codec.dart';
 void main() {
   const codec = MorseCodec();
 
-  test('英文和数字编码为国际 Morse', () {
+  test('英文和数字编码为国际 Morse，空格编码为词间隔', () {
     final result = codec.encodeText('SOS 2');
 
-    expect(result.output, '... --- ... ..---');
+    expect(result.output, '... --- ... / ..---');
     expect(result.hasError, isFalse);
+  });
+
+  test('英文长句往返保留空格', () {
+    const text = 'hello world this is morse';
+    final decoded = codec.decodeMorse(codec.encodeText(text).output);
+
+    expect(decoded.output, 'HELLO WORLD THIS IS MORSE');
+    expect(decoded.hasError, isFalse);
   });
 
   test('大陆标准表将中文经电报码转换为 Morse', () {
@@ -109,6 +117,34 @@ void main() {
       expect(roundTrip.output.replaceAll(' ', ''), input);
       expect(roundTrip.hasError, isFalse);
     }
+  });
+
+  test('无法解析的 Morse 片段标记错误', () {
+    final result = codec.decodeMorse('... xxx');
+
+    expect(result.hasError, isTrue);
+    expect(result.units.last.status, MorseStatus.error);
+    expect(result.units.last.error, '无法解析 Morse 片段');
+  });
+
+  test('连续 Morse 片段给出候选并取第一项', () {
+    final result = codec.decodeMorse('...---');
+
+    expect(result.output, result.units.single.candidates.first);
+    expect(result.units.single.candidates, isNotEmpty);
+  });
+
+  test('混合点划和文本时走歧义模式', () {
+    final result = codec.convert('SOS ...');
+
+    expect(result.kind, MorseInputKind.ambiguous);
+    expect(result.units.last.candidates, hasLength(2));
+  });
+
+  test('全角英文先正规化再编码', () {
+    final result = codec.encodeText('ＡＢ');
+
+    expect(result.output, '.- -...');
   });
 
   test('兼容 Unicode 点划字符', () {

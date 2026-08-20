@@ -119,4 +119,72 @@ void main() {
     expect(find.text('版本 0.0.1'), findsOneWidget);
     expect(find.text('检查更新'), findsOneWidget);
   });
+
+  testWidgets('分享路由打开后恢复 payload 内容', (tester) async {
+    final payload = const ShareCodec().encode('sos');
+    await tester.pumpWidget(const MorseApp());
+
+    Navigator.of(
+      tester.element(find.byType(MorseHomePage)),
+    ).pushNamed('/c/$payload');
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(TextField, 'sos'), findsOneWidget);
+    expect(find.text('... --- ...'), findsOneWidget);
+  });
+
+  testWidgets('损坏分享路由显示错误提示', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: MorseHomePage(
+          themeMode: ThemeMode.dark,
+          onThemeModeChanged: _noopThemeMode,
+          initialPayload: 'bad',
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('链接损坏，无法打开'), findsOneWidget);
+  });
+
+  testWidgets('复制输出按钮写入剪贴板并提示', (tester) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+
+    await tester.pumpWidget(const MorseApp());
+    await tester.enterText(find.byType(TextField), 'sos');
+    await tester.pump();
+    await tester.tap(find.byTooltip('复制输出'));
+    await tester.pump();
+
+    expect(calls.any((call) => call.method == 'Clipboard.setData'), isTrue);
+    expect(find.text('输出已复制'), findsOneWidget);
+  });
+
+  testWidgets('设置页检查更新触发回调', (tester) async {
+    var checked = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsPage(
+          playCount: PlayCount.once,
+          onChanged: (_) {},
+          onCheckUpdate: () => checked = true,
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('检查更新'));
+    await tester.pump();
+
+    expect(checked, isTrue);
+  });
 }
+
+void _noopThemeMode(ThemeMode _) {}

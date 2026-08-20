@@ -1,8 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:morse/morse_codec.dart';
 import 'package:morse/main.dart';
+
+import 'package:morse/morse_codec.dart';
 import 'package:morse/share_codec.dart';
 
 void main() {
@@ -63,15 +64,18 @@ void main() {
     expect(codec.decode(payload).text, text);
   });
 
-  test('web 分享 url 带预览文本 query', () {
-    expect(
-      shareWebUrl('http://localhost:46315', 'AYH8wS2C-_DBLYL78MEt', '你好 Morse'),
-      'http://localhost:46315/c/AYH8wS2C-_DBLYL78MEt?t=%E4%BD%A0%E5%A5%BD+Morse',
-    );
-    expect(
-      shareWebUrl('http://localhost:46315', 'AYH8wS2C-_DBLYL78MEt', '   '),
-      'http://localhost:46315/c/AYH8wS2C-_DBLYL78MEt',
-    );
+  test('播放次数上限映射', () {
+    expect(playLimit(PlayCount.once), 1);
+    expect(playLimit(PlayCount.twice), 2);
+    expect(playLimit(PlayCount.thrice), 3);
+    expect(playLimit(PlayCount.five), 5);
+    expect(playLimit(PlayCount.forever), -1);
+  });
+
+  test('分享 path 路由解析', () {
+    expect(shareRoutePayload('/c/AYKagA'), 'AYKagA');
+    expect(shareRoutePayload('/x/AYKagA'), isNull);
+    expect(shareRoutePayload(null), isNull);
   });
 
   test('morse:// 深链解析出 payload，其他 URI 不认', () {
@@ -85,6 +89,11 @@ void main() {
       morseLinkPayload(Uri.parse('https://morse.embla.cf/#/c/$payload')),
       isNull,
     );
+  });
+
+  test('未知电报码 payload 抛 FormatException', () {
+    // byte0=版本1, tag=1 个中文码, 9999 未收入表。
+    expect(() => codec.decode('AUJZmg'), throwsFormatException);
   });
 
   test('非法 payload 抛 FormatException', () {
