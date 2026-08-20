@@ -154,6 +154,13 @@ String? shareRoutePayload(String? name) {
   return match?.group(1);
 }
 
+String shareWebUrl(String base, String payload, String preview) {
+  final url = Uri.parse('$base/c/$payload');
+  final text = preview.trim();
+  if (text.isEmpty) return url.toString();
+  return url.replace(queryParameters: {'t': text}).toString();
+}
+
 /// morse://convert?c=<payload> 深链 → payload 字符串；其他 URI 返回 null。
 String? morseLinkPayload(Uri uri) {
   if (uri.scheme != 'morse' || uri.host != 'convert') return null;
@@ -281,7 +288,7 @@ class _MorseHomePageState extends State<MorseHomePage> {
         : _inputController.text;
     final payload = const ShareCodec().encode(shareText, profile: _profile);
     final base = kIsWeb ? Uri.base.origin : 'https://morse.embla.cf';
-    final httpsUrl = '$base/c/$payload';
+    final httpsUrl = shareWebUrl(base, payload, shareText);
     final morseUrl = 'morse://convert?c=$payload&p=${_profile.name}';
     return showModalBottomSheet<void>(
       context: context,

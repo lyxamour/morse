@@ -63,6 +63,17 @@ void main() {
     expect(codec.decode(payload).text, text);
   });
 
+  test('web 分享 url 带预览文本 query', () {
+    expect(
+      shareWebUrl('http://localhost:46315', 'AYH8wS2C-_DBLYL78MEt', '你好 Morse'),
+      'http://localhost:46315/c/AYH8wS2C-_DBLYL78MEt?t=%E4%BD%A0%E5%A5%BD+Morse',
+    );
+    expect(
+      shareWebUrl('http://localhost:46315', 'AYH8wS2C-_DBLYL78MEt', '   '),
+      'http://localhost:46315/c/AYH8wS2C-_DBLYL78MEt',
+    );
+  });
+
   test('morse:// 深链解析出 payload，其他 URI 不认', () {
     const payload = 'AYKagA';
     expect(
