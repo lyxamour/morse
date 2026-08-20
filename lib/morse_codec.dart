@@ -262,7 +262,6 @@ class MorseCodec {
             normalized: token,
             status: MorseStatus.ok,
             morse: token,
-            candidates: _continuousCandidates(token),
             debug: const {'kind': 'morse-token'},
           ),
         );
